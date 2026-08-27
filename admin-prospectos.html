@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scout · RBS Agentes</title>
+<style>
+  :root{
+    --ink:#14171c; --panel:#1c2028; --panel-2:#22262f;
+    --gold:#c9a24b; --gold-soft:#e8cf8a; --paper:#efe9db;
+    --muted:#8a8f9a; --line:#2e333d; --green:#7fae7f; --red:#c97a6b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ink);color:var(--paper);font-family:Georgia,serif;min-height:100vh;}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 24px 80px;}
+  h1{font-weight:400;font-size:32px;margin:0 0 6px;}
+  h1 em{color:var(--gold-soft);font-style:italic;}
+  .sub{color:var(--muted);font-family:'Helvetica Neue',sans-serif;font-size:15px;margin:0 0 32px;}
+
+  .search-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:20px; display:flex; gap:10px; margin-bottom:32px; flex-wrap:wrap;
+    font-family:'Helvetica Neue',sans-serif;
+  }
+  .search-card input{
+    flex:1; min-width:180px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; padding:11px 14px; color:var(--paper); font-size:15px;
+  }
+  .search-card input:focus{outline:none;border-color:var(--gold);}
+  .search-card button{
+    background:var(--gold); color:#20180a; border:none; border-radius:6px;
+    padding:0 24px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',sans-serif;
+  }
+  .search-card button:disabled{opacity:0.5;cursor:default;}
+
+  .status-msg{font-family:'Helvetica Neue',sans-serif;color:var(--muted);font-size:14px;margin-bottom:20px;}
+
+  .fichas{display:flex;flex-direction:column;gap:12px;}
+  .ficha{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:18px 20px; font-family:'Helvetica Neue',sans-serif;
+  }
+  .ficha-head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;}
+  .ficha h3{margin:0 0 4px; font-family:Georgia,serif; font-weight:400; font-size:19px; color:var(--paper);}
+  .ficha .meta{color:var(--muted); font-size:13px; line-height:1.6;}
+  .ficha .meta b{color:var(--gold-soft); font-weight:600;}
+
+  select.estado{
+    background:var(--panel-2); color:var(--paper); border:1px solid var(--line);
+    border-radius:6px; padding:6px 10px; font-family:'Helvetica Neue',sans-serif; font-size:13px;
+  }
+  .ficha.estado-contactado{border-left:3px solid var(--green);}
+  .ficha.estado-descartado{opacity:0.5;}
+
+  .mensaje-box{
+    background:var(--panel-2); border-radius:6px; padding:12px 14px; margin-top:10px;
+    font-size:14px; line-height:1.5; color:var(--paper); position:relative;
+  }
+  .copy-btn{
+    margin-top:8px; background:none; border:1px solid var(--gold); color:var(--gold-soft);
+    border-radius:5px; padding:5px 12px; font-size:12px; cursor:pointer; font-family:'Helvetica Neue',sans-serif;
+  }
+  .copy-btn:hover{background:var(--gold); color:#20180a;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scout <em>· agente prospector</em></h1>
+  <p class="sub">Busca negocios reales por rubro y zona, arma la ficha y te sugiere el primer mensaje. Vos decidís a quién y cuándo escribirle.</p>
+
+  <div class="search-card">
+    <input id="rubro" type="text" placeholder="Rubro (ej: pizzería, salón de belleza)" />
+    <input id="ciudad" type="text" placeholder="Ciudad (ej: Miami, FL)" />
+    <button id="buscarBtn">Buscar</button>
+  </div>
+  <div class="status-msg" id="status"></div>
+
+  <div class="fichas" id="fichas"></div>
+</div>
+
+<script>
+const rubroInput = document.getElementById('rubro');
+const ciudadInput = document.getElementById('ciudad');
+const buscarBtn = document.getElementById('buscarBtn');
+const statusEl = document.getElementById('status');
+const fichasEl = document.getElementById('fichas');
+
+async function buscar(){
+  const rubro = rubroInput.value.trim();
+  const ciudad = ciudadInput.value.trim();
+  if(!rubro || !ciudad) return;
+
+  buscarBtn.disabled = true;
+  statusEl.textContent = 'Buscando negocios y armando mensajes… puede tardar unos segundos.';
+
+  try{
+    const res = await fetch('/api/buscar-prospectos', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({rubro, ciudad})
+    });
+    const data = await res.json();
+    statusEl.textContent = `Encontrados: ${data.encontrados || 0} negocios nuevos.`;
+    cargarFichas();
+  }catch(e){
+    statusEl.textContent = 'Hubo un error buscando. Intentá de nuevo.';
+  }
+  buscarBtn.disabled = false;
+}
+
+function fichaHTML(f){
+  return `
+    <div class="ficha estado-${f.estado}" data-id="${f.id}">
+      <div class="ficha-head">
+        <div>
+          <h3>${f.nombre_negocio}</h3>
+          <div class="meta">
+            <b>Tel:</b> ${f.telefono || 'no disponible'} · <b>Rubro:</b> ${f.rubro} · <b>Rating:</b> ${f.rating || '—'}<br>
+            <b>Dirección:</b> ${f.direccion || '—'}
+            ${f.website ? ` · <a href="${f.website}" target="_blank" style="color:var(--gold-soft)">web</a>` : ''}
+          </div>
+        </div>
+        <select class="estado" onchange="cambiarEstado('${f.id}', this.value)">
+          <option value="nuevo" ${f.estado==='nuevo'?'selected':''}>Nuevo</option>
+          <option value="contactado" ${f.estado==='contactado'?'selected':''}>Contactado</option>
+          <option value="descartado" ${f.estado==='descartado'?'selected':''}>Descartado</option>
+        </select>
+      </div>
+      <div class="mensaje-box">${f.mensaje_sugerido || '(sin mensaje generado)'}</div>
+      <button class="copy-btn" onclick="copiarMensaje(this, \`${(f.mensaje_sugerido||'').replace(/`/g,'')}\`)">Copiar mensaje</button>
+    </div>
+  `;
+}
+
+async function cargarFichas(){
+  const res = await fetch('/api/prospectos');
+  const data = await res.json();
+  fichasEl.innerHTML = data.map(fichaHTML).join('');
+}
+
+async function cambiarEstado(id, estado){
+  await fetch('/api/prospectos', {
+    method:'PATCH',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id, estado})
+  });
+  cargarFichas();
+}
+
+function copiarMensaje(btn, texto){
+  navigator.clipboard.writeText(texto);
+  const original = btn.textContent;
+  btn.textContent = 'Copiado ✓';
+  setTimeout(()=> btn.textContent = original, 1500);
+}
+
+buscarBtn.addEventListener('click', buscar);
+cargarFichas();
+</script>
+</body>
+</html>
